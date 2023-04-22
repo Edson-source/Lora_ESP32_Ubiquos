@@ -216,7 +216,7 @@ void receive_packet_temp(){
         }
         auxtempStatus = recv_temp;
         // chamar a funcção handleRequest
-        handleRequest_temp();
+        if(recv_temp != "") handleRequest_temp();
         // Serial.println(recv);
         delay(2000);
 
@@ -244,7 +244,7 @@ void receive_packet_umi(){
         }
         auxumiStatus = recv_umi;
         // chamar a funcção handleRequest
-        handleRequest_umi();
+        if(recv_umi != "") handleRequest_umi();
         // Serial.println(recv);
         delay(2000);
 
@@ -272,7 +272,7 @@ void receive_packet_pluv(){
         }
         auxpluvStatus = recv_pluv;
         // chamar a funcção handleRequest
-        handleRequest_pluv();
+        if(recv_pluv != "") handleRequest_pluv();
         // Serial.println(recv);
         delay(2000);
 
@@ -300,7 +300,7 @@ void receive_packet_anem(){
         }
         auxanemStatus = recv_anem;
         // chamar a funcção handleRequest
-        handleRequest_anem();
+        if(recv_anem != "") handleRequest_anem();
         // Serial.println(recv);
         delay(2000);
 
