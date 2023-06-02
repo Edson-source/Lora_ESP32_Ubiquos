@@ -6,16 +6,24 @@
 #include <Adafruit_Sensor.h>
 
 /* Defines do projeto */
-#define REED 34           // pin onde o sensor magnetico esta conectado
+#define REED 2           // pin onde o sensor magnetico esta conectado
 #define DHTPIN 4         // pin onde dht esta conectado
-#define WindSensorPin (14) // The pin location of the anemometer sensor
+#define WindSensorPin 0 // The pin location of the anemometer sensor
 
 #define DIAMETRO 125       // diametro interno do balde
 #define RAIO 6.25           // raio interno do balde
-#define VOLUME 3.72         // volume da bascula (em cm3) (1cm3 == 1ml) (1ml == 1000mm3)
+#define VOLUME 3.05         // volume da bascula (em cm3) (1cm3 == 1ml) (1ml == 1000mm3)
   
+// Defina o índice para cada valor de sensor
+#define TEMPERATURE_INDEX 0
+#define HUMIDITY_INDEX 1
+#define RAIN_INDEX 2
+#define WIND_SPEED_INDEX 3
+
 #define DHTTYPE DHT11 // DHT 11
 DHT dht(DHTPIN, DHTTYPE);
+
+unsigned long lastSend;
 
 // Variáveis DHT
 float temperatura_lida = 0.0;
@@ -24,7 +32,7 @@ float umidade_lida = 0.0;
 // Variáveis pluviometro:
 int val = 0;
 int old_val = 0;
-int REEDCOUNT = 0;
+volatile unsigned long REEDCOUNT = 0;
 
 // --- Constantes ---
 const float pi = 3.14159265;     //Número de pi
@@ -32,8 +40,9 @@ int period = 5000;               //Tempo de medida(miliseconds)
 int delaytime = 2000;            //Invervalo entre as amostras (miliseconds)
 int radius = 240;                //Raio do anemometro(mm)
 
-volatile unsigned long Rotations; // cup rotation counter used in interrupt routine
+volatile unsigned long Rotations = 0; // cup rotation counter used in interrupt routine
 volatile unsigned long ContactBounceTime = 0; // Timer to avoid contact bounce in interrupt routine
+volatile unsigned long ContactBounce = 0;
 
 unsigned long RPM = 0;            //Rotações por minuto
 float speedwind = 0;             //Velocidade do vento (km/h)
@@ -41,16 +50,26 @@ float windspeed = 0;             //Velocidade do vento (m/s)
 
 float volume_coletado;
 // This is the function that the interrupt calls to increment the rotation count
-IRAM_ATTR void isr_rotation () {
+void IRAM_ATTR isr_rotation () {
   if ((millis() - ContactBounceTime) > 15 ) { // debounce the switch contact.
     Rotations++;
     ContactBounceTime = millis();
+  }
+    // Serial.print("funcao rotacao");
+}
+
+// This is the function that the interrupt calls to increment the rotation count
+void IRAM_ATTR isr_rain () {
+  if ((millis() - ContactBounce) > 50 ) { // debounce the switch contact.
+    REEDCOUNT = REEDCOUNT + 1;              // Adiciona 1 à cntagem de pulsos
+    ContactBounce = millis();
+    // Serial.println("funcao interrupcao chuva");
   }
 }
 
 //Função para calcular o RPM
 void RPMcalc() {
-
+  Rotations = Rotations/37;         //37 Dentes no interior do anemômetro
   RPM = ((Rotations) * 60) / (period / 1000); // Calculate revolutions per minute (RPM)
 }
 
@@ -70,8 +89,6 @@ void get_temp(){
 
     Serial.print("T: ");                    //ESCREVE O TEXTO NO DISPLAY
     Serial.println(temperatura_lida);
-
-    send_packet_temp();
 }
 
 void get_umi(){
@@ -79,40 +96,25 @@ void get_umi(){
 
     Serial.print("U: ");                    //ESCREVE O TEXTO NO DISPLAY   
     Serial.println(umidade_lida);
-    send_packet_umi();
 }
 
 void get_rain(){
-    bool val = digitalRead(REED);      // Lê o Status do Reed Switch
-
-    if ((val == LOW && old_val == HIGH)) {    // Verefica se o Status mudou
-        delay(10);                              // Atraso colocado para lidar com qualquer "salto" no switch.
-        REEDCOUNT = REEDCOUNT + 1;              // Adiciona 1 à cntagem de pulsos
-        old_val = val;                          //Iguala o valor antigo com o atual
-    }
-    else {
-        old_val = val;               //If the status hasn't changed then do nothing
-    }
     
-    float area_recipiente = 3.1415 * (RAIO * RAIO); // área da seção transversal do recipiente em cm²
+    float area_recipiente = 3.14159265 * (RAIO * RAIO); // área da seção transversal do recipiente em cm²
     float volume_por_virada = (VOLUME/area_recipiente);
     volume_coletado = (REEDCOUNT * volume_por_virada) * 10; // volume total coletado em cm³
 
 
 
-    Serial.println("Viradas: ");
+    Serial.print("Viradas: ");
     Serial.println(REEDCOUNT);
 
-    Serial.println("Chuva: ");
-    Serial.print(volume_coletado);
+    Serial.print("Chuva: ");
+    Serial.print (volume_coletado);
     Serial.println(" mm");
-
-    send_packet_pluv();
-
 }
 
 void get_wind(){
-
     Rotations = 0; // Set Rotations count to 0 ready for calculations
 
     sei(); // Enables interrupts
@@ -120,21 +122,19 @@ void get_wind(){
     cli(); // Disable interrupts
 
     Serial.print("Rotações: ");
-    Serial.print(Rotations);
+    Serial.println(Rotations);
 
     RPMcalc();
     Serial.print("RPM: ");
-    Serial.print(RPM);
+    Serial.println(RPM);
 
     WindSpeed();
     Serial.print("WindSpeed [m/s]: ");
-    Serial.print(windspeed);
+    Serial.println(windspeed);
 
     SpeedWind();
     Serial.print("WindSpeed [km/h]: ");
-    Serial.print(speedwind);
-
-    // send_packet_anem();
+    Serial.println(speedwind);
 }
 
 void send_packet_temp(){
@@ -161,13 +161,18 @@ void send_packet_pluv(){
     LoRa.endPacket();
 };
 
-// void send_packet_anem(){
-//   // send packet
-//     LoRa.beginPacket();
-//     LoRa.print("Velocidade do vento ");
-//     LoRa.print(windspeed);
-//     LoRa.endPacket();
-// };
+void send_packets(){
+  byte packet[4];
+
+  packet[0] = (byte)temperatura_lida;
+  packet[1] = (byte)umidade_lida;
+  packet[2] = (byte)volume_coletado;
+  packet[3] = (byte)windspeed;
+
+  LoRa.beginPacket();
+  LoRa.write(packet, sizeof(packet));
+  LoRa.endPacket();
+};
 
 void setup()
 {
@@ -177,26 +182,40 @@ void setup()
     
     /* Inicializa sensor de temperatura e umidade relativa do ar */
     dht.begin();
-    
+    lastSend = 0;
+
     Serial.println("LoRa Sender");
     LoRa.setPins(RADIO_CS_PIN, RADIO_RST_PIN, RADIO_DIO0_PIN);
     if (!LoRa.begin(LoRa_frequency)) {
         Serial.println("Starting LoRa failed!");
-        while (1);
+        // while (1);
     }                              //DEFINE BRILHO ('0' PARA MAXIMO E '1' PARA MINIMO)
 
     pinMode(REED, INPUT_PULLUP);
-    //pinMode(WindSensorPin, INPUT);
-    //attachInterrupt(digitalPinToInterrupt(WindSensorPin), isr_rotation, RISING);
+    pinMode(WindSensorPin, INPUT_PULLUP);
+    attachInterrupt(REED, isr_rain, FALLING);
+    attachInterrupt(WindSensorPin, isr_rotation, FALLING);
 }
 
 void loop()
 {
-    Serial.println("Sending packet !!!");
 
-    /* Garante que a conexão wi-fi esteja ativa */
+    // adicionar calculo_rain que calcula o valor do pluviometro e ai chama o get_rain pra enviar pro jaosn no outro lora
     get_temp();
     get_umi();
     get_rain();
-    //get_wind();
+    get_wind();
+    if (millis() - lastSend > 10000){
+      Serial.println("Sending packet !!!");
+      
+      // send_packet_temp();
+      // delay(20);
+      // send_packet_umi();
+      // delay(20);
+      // send_packet_pluv();
+      // delay(20);
+      send_packets();
+
+      lastSend = millis();
+    }
 }

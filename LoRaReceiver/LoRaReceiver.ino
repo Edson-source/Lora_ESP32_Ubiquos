@@ -4,7 +4,9 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
-
+#include <SPI.h>                // SSD1396
+#include <Wire.h>               // SSD1396
+#include <Adafruit_Sensor.h>
 
 namespace rainGaugeEspServer
 {
@@ -29,8 +31,14 @@ namespace rainGaugeEspServer
 
 using rainGaugeEspServer::fromJsonToString;
 
-#define WIFI_SSID  "EdsonWifi"
-#define WIFI_PASS  "cjxe6131"
+// #define WIFI_SSID  "EdsonWifi"
+// #define WIFI_PASS  "cjxe6131"
+
+
+#define WIFI_SSID  "lab120"
+#define WIFI_PASS  "labredes120"
+
+const char* SERVER_URL = "http://192.168.0.112:8000/routersloraip/";
 
 constexpr auto webServerPort = 80;
 
@@ -43,18 +51,28 @@ auto json_umi = StaticJsonDocument<jsonDocumentSize>();
 auto json_pluv = StaticJsonDocument<jsonDocumentSize>();
 auto json_anem = StaticJsonDocument<jsonDocumentSize>();
 
+bool auxStatusT = false;
+bool auxStatusU = false;
+bool auxStatusV = false;
+bool auxStatusA = false;
+
 auto counter_temp = 0;
 auto counter_umi = 0;
 auto counter_pluv = 0;
 auto counter_anem = 0;
 
+String recv_temp = "";
+String recv_umid = "";
+String recv_anem = "";
+String recv_pluv = "";
+
 String auxtempStatus;
-String auxumiStatus;
+String auxumidStatus;
 String auxpluvStatus;
 String auxanemStatus;
 
 void handleRequest_temp();
-void handleRequest_umi();
+void handleRequest_umid();
 void handleRequest_pluv();
 void handleRequest_anem();
 
@@ -93,7 +111,7 @@ void handleRequest_temp() {
 }
 
 // Envia mensagem json::: 
-void handleRequest_umi() {
+void handleRequest_umid() {
 	auto const clientIPAddress = webServer.client().remoteIP();
 
 	Serial.print("A request was made from: ");
@@ -136,51 +154,56 @@ void handleRequest_anem() {
 
 // crie um compare pra cada um (compare tem que virar nome dado())
 void compare_temp() {
-
-    auto object_temp = json_temp["temp_dict"].createNestedObject();
-    object_temp["id"] = counter_umi;
-    object_temp["temp_status"] = auxtempStatus;
-    // handlePost();
-    counter_temp++;
-    
+    if (auxStatusT == true){
+      auto object_temp = json_temp["temp_dict"].createNestedObject();
+      object_temp["id"] = counter_umi;
+      object_temp["temp_status"] = auxtempStatus;
+      // handlePost();
+      counter_temp++;
+      auxStatusT = false;
+    }
 }
 
 // crie um compare pra cada um (compare tem que virar nome dado())
 void compare_umi() {
-
-    auto object_umi = json_umi["umi_dict"].createNestedObject();
-    object_umi["id"] = counter_umi;
-    object_umi["umi_status"] = auxumiStatus;
-    // handlePost();
-    counter_umi++;
+    if (auxStatusU == true){
+      auto object_umi = json_umi["umi_dict"].createNestedObject();
+      object_umi["id"] = counter_umi;
+      object_umi["umi_status"] = auxumidStatus;
+      // handlePost();
+      counter_umi++;
+      auxStatusU = false;
+    }
 }
 
 // crie um compare pra cada um (compare tem que virar nome dado())
 void compare_pluv() {
-
-    auto object_pluv = json_pluv["pluv_dict"].createNestedObject();
-    object_pluv["id"] = counter_pluv;
-    object_pluv["pluv_status"] = auxpluvStatus;
-    // handlePost();
-    counter_pluv++;
-    
+    if (auxStatusV == true){
+      auto object_pluv = json_pluv["pluv_dict"].createNestedObject();
+      object_pluv["id"] = counter_pluv;
+      object_pluv["pluv_status"] = auxpluvStatus;
+      // handlePost();
+      counter_pluv++;
+      auxStatusV = false;
+    } 
 }
 
 // crie um compare pra cada um (compare tem que virar nome dado())
 void compare_anem() {
-
+    if (auxStatusA == true){
     auto object_anem = json_anem["anem_dict"].createNestedObject();
-    object_anem["id"] = counter_anem;
-    object_anem["anem_status"] = auxanemStatus;
-    // handlePost();
-    counter_anem++;
-    
+      object_anem["id"] = counter_anem;
+      object_anem["anem_status"] = auxanemStatus;
+      // handlePost();
+      counter_anem++;
+      auxStatusA = false;
+    }
 }
 
 void setUpWebServer() {
 
   webServer.on("/temp", handleRequest_temp);
-  webServer.on("/umi", handleRequest_umi);
+  webServer.on("/umid", handleRequest_umid);
   webServer.on("/pluv", handleRequest_pluv);
   webServer.on("/anem", handleRequest_anem);
   webServer.begin();
@@ -190,125 +213,65 @@ void setUpWebServer() {
 	Serial.printf(":%d.\n", webServerPort);
 }
 
-
 auto setUpSerial() -> void
 {
 	constexpr auto baudRate = 115200;
 	Serial.begin(baudRate);
 }
 
-
-void receive_packet_temp(){
+void receive_packets(){
    int packetSize = LoRa.parsePacket();
     if (packetSize) {
         // received a packet
         Serial.print("Received packet '");
 
-        String recv_temp = "";
-        // read packet
-        // add um if
-        char recv = (char)LoRa.read();
-        if (recv == 'T')
-        {
-          while (LoRa.available()) {
-              recv_temp += (char)LoRa.read();
-          }
+        byte packet[packetSize];
+        for (int i = 0; i < packetSize; i++) {
+          packet[i] = LoRa.read();
         }
+
+        // Processamento do pacote recebido
+        float temperature = packet[0];
+        float humidity = packet[1];
+        float rain = packet[2];
+        float windSpeed = packet[3];
+        
+        // read packet
+        recv_temp = "";
+        recv_temp = temperature;
         auxtempStatus = recv_temp;
-        // chamar a funcção handleRequest
-        if(recv_temp != "") handleRequest_temp();
-        // Serial.println(recv);
-        delay(2000);
+        auxStatusT = true;
+        handleRequest_temp();
+      
+        recv_umid = "";
+        recv_umid = humidity;
+        auxumidStatus = recv_umid;
+        auxStatusU = true;
+        handleRequest_umid();
 
-        // print RSSI of packet
-        Serial.print("' with RSSI ");
-        Serial.println(LoRa.packetRssi());
-    }
-}
-
-void receive_packet_umi(){
-   int packetSize = LoRa.parsePacket();
-    if (packetSize) {
-        // received a packet
-        Serial.print("Received packet '");
-
-        String recv_umi = "";
-        // read packet
-        // add um if 
-        // se a recv == temp { atualiza variavel global temp chama hendle reqquest }
-        char recv = (char)LoRa.read();
-        if (recv == 'U') {
-          while (LoRa.available()) {
-              recv_umi += (char)LoRa.read();
-          }
-        }
-        auxumiStatus = recv_umi;
-        // chamar a funcção handleRequest
-        if(recv_umi != "") handleRequest_umi();
-        // Serial.println(recv);
-        delay(2000);
-
-        // print RSSI of packet
-        Serial.print("' with RSSI ");
-        Serial.println(LoRa.packetRssi());
-    }
-}
-
-void receive_packet_pluv(){
-   int packetSize = LoRa.parsePacket();
-    if (packetSize) {
-        // received a packet
-        Serial.print("Received packet '");
-
-        String recv_pluv = "";
-        // read packet
-        // add um if 
-        // se a recv == temp { atualiza variavel global temp chama hendle reqquest }
-        char recv = (char)LoRa.read();
-        if (recv == 'V') {
-          while (LoRa.available()) {
-              recv_pluv += (char)LoRa.read();
-          }
-        }
+        recv_pluv = "";
+        recv_pluv = rain;
         auxpluvStatus = recv_pluv;
-        // chamar a funcção handleRequest
-        if(recv_pluv != "") handleRequest_pluv();
-        // Serial.println(recv);
-        delay(2000);
+        auxStatusV = true;
+        handleRequest_pluv();
 
-        // print RSSI of packet
-        Serial.print("' with RSSI ");
-        Serial.println(LoRa.packetRssi());
-    }
-}
-
-void receive_packet_anem(){
-   int packetSize = LoRa.parsePacket();
-    if (packetSize) {
-        // received a packet
-        Serial.print("Received packet '");
-
-        String recv_anem = "";
-        // read packet
-        // add um if 
-        // se a recv == temp { atualiza variavel global temp chama hendle reqquest }
-        char recv = (char)LoRa.read();
-        if (recv == 'A') {
-          while (LoRa.available()) {
-              recv_anem += (char)LoRa.read();
-          }
-        }
+        recv_anem = "";
+        recv_anem = windSpeed;
         auxanemStatus = recv_anem;
-        // chamar a funcção handleRequest
-        if(recv_anem != "") handleRequest_anem();
-        // Serial.println(recv);
-        delay(2000);
+        auxStatusA = true;
+        handleRequest_anem();
+        } else {
+          auxStatusT = false;
+          auxStatusU = false;
+          auxStatusV = false;
+          auxStatusA = false;
+        }
 
         // print RSSI of packet
         Serial.print("' with RSSI ");
         Serial.println(LoRa.packetRssi());
-    }
 }
+
 void setup(){
     initBoard();
     // When the power is turned on, a delay is required.
@@ -322,24 +285,58 @@ void setup(){
         while (1);
     }
 
-    json_temp.createNestedArray("temp_dict");
-    json_umi.createNestedArray("umi_dict");
-    json_pluv.createNestedArray("pluv_dict");
-    json_anem.createNestedArray("anem_dict");
+  json_temp.createNestedArray("temp_dict");
+  json_umi.createNestedArray("umi_dict");
+  json_pluv.createNestedArray("pluv_dict");
+  json_anem.createNestedArray("anem_dict");
 
-    setUpSerial();
-    setUpWiFi();
-    setUpWebServer();
-    
+  setUpSerial();
+  setUpWiFi();
+  setUpWebServer();
+  
+  // Fazer post do ip do lora para o django se conectar
+
+  // Pega ip do lora
+  auto const clientIPAddress = WiFi.localIP();
+  
+  // Criar uma string com o tamanho necessário
+  String postData = clientIPAddress.toString() + ":" + String(webServerPort);
+  
+  // Instancia de httpclient
+  HTTPClient http;
+
+  // Begin com o servidor do django 
+  http.begin("http://192.168.0.112:8000/routersloraip/");
+  http.addHeader("Content-Type", "application/json");
+
+  // Constroi a string a ser enviada  
+  DynamicJsonDocument jsonPayload(50);
+  jsonPayload["url"] = postData;
+
+  char buffer[50];
+  serializeJson(jsonPayload, buffer);
+  
+  printf("Valor como string: %s\n", buffer);
+
+  int httpResponseCode = http.POST(buffer);
+
+  if (httpResponseCode == HTTP_CODE_OK) {
+  String response = http.getString();
+  Serial.println(httpResponseCode);
+  Serial.println(response);
+} else {
+  Serial.print("Erro na requisição: ");
+  Serial.println(httpResponseCode);
+}
+
+
+  http.end();
 }
 
 void loop()
 {
     // try to parse packet
-  receive_packet_temp();
-  receive_packet_umi();
-  receive_packet_pluv();
-  receive_packet_anem();
+  receive_packets();
 
   webServer.handleClient();
 
@@ -347,64 +344,40 @@ void loop()
         if (u8g2) {
             u8g2->clearBuffer();
             char buf[256];
-            u8g2->drawStr(0, 12, "Received OK!");
-            u8g2->drawStr(0, 26, recv.c_str());
-            snprintf(buf, sizeof(buf), "RSSI:%i", LoRa.packetRssi());
+            // u8g2->drawStr(0, 12, "Received OK!");
+            // snprintf(buf, sizeof(buf), "RSSI:%i", LoRa.packetRssi());
+            // u8g2->drawStr(0, 40, buf);
+            if (-120 <= LoRa.packetRssi() && LoRa.packetRssi() < -80) {
+              snprintf(buf, sizeof(buf), "Sinal Fraco (%i)", LoRa.packetRssi());
+              u8g2->drawStr(0, 12, buf);
+            }
+            else if (-80 <= LoRa.packetRssi() && LoRa.packetRssi() < -40) {
+              snprintf(buf, sizeof(buf), "Sinal Medio (%i)", LoRa.packetRssi());
+              u8g2->drawStr(0, 12, buf);
+            }
+            else if (-40 <= LoRa.packetRssi() && LoRa.packetRssi() < 0 ) {
+              snprintf(buf, sizeof(buf), "Sinal Forte (%i)", LoRa.packetRssi());
+              u8g2->drawStr(0, 12, buf);
+            }
+
+            // u8g2->clearDisplay();
+            // u8g2->clearBuffer();
+            // Temperature display
+            snprintf(buf, sizeof(buf), "T: %s", recv_temp.c_str());
             u8g2->drawStr(0, 40, buf);
-            snprintf(buf, sizeof(buf), "SNR:%.1f", LoRa.packetSnr());
+
+            // Humidity display
+            snprintf(buf, sizeof(buf), "U: %s", recv_umid.c_str());
+            u8g2->drawStr(64, 56, buf);
+
+            // Pluviometer display
+            snprintf(buf, sizeof(buf), "P: %s", recv_pluv.c_str());
+            u8g2->drawStr(64, 40, buf);
+
+            // Anemometer display
+            snprintf(buf, sizeof(buf), "A: %s", recv_anem.c_str());
             u8g2->drawStr(0, 56, buf);
             u8g2->sendBuffer();
         }
 #endif
 }
-
-
-// void handlePost() {
-//   if (WiFi.status() == WL_CONNECTED) {
-//     WiFiClient client;
-//     HTTPClient http;
-
-//     http.begin(client, "http://127.0.0.1:8000/lamp/"); // URL da requisição POST
-//     http.addHeader("Content-Type", "application/json"); // Tipo de conteúdo
-
-//     String requestBody = "{\"status\": " + String(aux) + "}"; // Corpo da requisição
-//     int httpResponseCode = http.POST(requestBody); // Envia a requisição e recebe a resposta
-
-//     if (httpResponseCode > 0) {
-//       String response = http.getString(); // Lê a resposta
-//       Serial.println(httpResponseCode);
-//       Serial.println(response);
-//     } else {
-//       Serial.println("Erro na requisição POST");
-//     }
-
-//     http.end(); // Encerra a conexão
-//   }
-// }
-
-// void handleRootPost() {
-//   String html = "<html><body><h1>Controle de Relé</h1>";
-//   html += "<form method='POST' action='/relay'>";
-//   html += "<input type='text' name='relay' value=''>Ligar<br>";
-//   html += "<input type='submit' value='Enviar'>";
-//   html += "</form></body></html>";
-//   webServer.send(200, "text/html", html);
-// }
-
-// void handleRelay() {
-//   String relayStatus = webServer.arg("relay");
-
-//   if (relayStatus == "1") {
-//     digitalWrite(RELAY_PIN, HIGH);
-//     ledState = HIGH;
-//     auxledStatus = 1;
-//   } else if (relayStatus == "0") {
-//     auxledStatus = 0;
-//     digitalWrite(RELAY_PIN, LOW);
-//     ledState = LOW;
-//   }
-
-//   handleRequest();
-
-//   webServer.send(200, "text/plain", (ledState == HIGH) ? "Ligado" : "Desligado");
-// }

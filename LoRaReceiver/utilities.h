@@ -36,7 +36,7 @@
 #define RADIO_MISO_PIN              19
 #define RADIO_MOSI_PIN              27
 #define RADIO_CS_PIN                18
-#define RADIO_DIO0_PIN               26
+#define RADIO_DIO0_PIN              26
 #define RADIO_RST_PIN               23
 #define RADIO_DIO1_PIN              33
 #define RADIO_BUSY_PIN              32
@@ -47,6 +47,7 @@
 
 #define GPS_BAUD_RATE               9600
 #define HAS_GPS
+#define HAS_DISPLAY                 //Optional, bring your own board, no OLED !!
 
 #elif defined(LILYGO_TBeam_V1_X)
 
@@ -73,7 +74,7 @@
 
 #define GPS_BAUD_RATE               9600
 #define HAS_GPS
-
+#define HAS_DISPLAY                 //Optional, bring your own board, no OLED !!
 
 #elif defined(LILYGO_T3_V1_0)
 #define I2C_SDA                     4
