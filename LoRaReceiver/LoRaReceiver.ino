@@ -1,12 +1,12 @@
-#include <LoRa.h>
-#include "boards.h"
-#include <ArduinoJson.h>
-#include <WebServer.h>
-#include <WiFi.h>
-#include <HTTPClient.h>
+#include <LoRa.h>             // Rede Lora
+#include "boards.h"           // Especificação da versão utilizada
+#include <ArduinoJson.h>      // Envio de informações usando Json
+#include <WebServer.h>        // Estabelece conecxão com o servidor que receberá os dados
+#include <WiFi.h>             // WiFi
+#include <HTTPClient.h>       // Comunicação com o sistema
 #include <SPI.h>                // SSD1396
 #include <Wire.h>               // SSD1396
-#include <Adafruit_Sensor.h>
+#include <Adafruit_Sensor.h>    //DHT11
 
 namespace rainGaugeEspServer
 {
@@ -34,6 +34,8 @@ using rainGaugeEspServer::fromJsonToString;
 // #define WIFI_SSID  "EdsonWifi"
 // #define WIFI_PASS  "cjxe6131"
 
+// #define WIFI_SSID  "Apê 202"
+// #define WIFI_PASS  "COMPIUTERHOUSE"
 
 #define WIFI_SSID  "lab120"
 #define WIFI_PASS  "labredes120"
@@ -60,11 +62,13 @@ auto counter_temp = 0;
 auto counter_umi = 0;
 auto counter_pluv = 0;
 auto counter_anem = 0;
+auto id = 0;
 
 String recv_temp = "";
 String recv_umid = "";
 String recv_anem = "";
 String recv_pluv = "";
+float recv_id;
 
 String auxtempStatus;
 String auxumidStatus;
@@ -158,6 +162,7 @@ void compare_temp() {
       auto object_temp = json_temp["temp_dict"].createNestedObject();
       object_temp["id"] = counter_umi;
       object_temp["temp_status"] = auxtempStatus;
+      object_temp["lora_id"] = recv_id;
       // handlePost();
       counter_temp++;
       auxStatusT = false;
@@ -170,6 +175,8 @@ void compare_umi() {
       auto object_umi = json_umi["umi_dict"].createNestedObject();
       object_umi["id"] = counter_umi;
       object_umi["umi_status"] = auxumidStatus;
+      object_umi["lora_id"] = recv_id;
+
       // handlePost();
       counter_umi++;
       auxStatusU = false;
@@ -182,6 +189,8 @@ void compare_pluv() {
       auto object_pluv = json_pluv["pluv_dict"].createNestedObject();
       object_pluv["id"] = counter_pluv;
       object_pluv["pluv_status"] = auxpluvStatus;
+      object_pluv["lora_id"] = recv_id;
+
       // handlePost();
       counter_pluv++;
       auxStatusV = false;
@@ -194,6 +203,8 @@ void compare_anem() {
     auto object_anem = json_anem["anem_dict"].createNestedObject();
       object_anem["id"] = counter_anem;
       object_anem["anem_status"] = auxanemStatus;
+      object_anem["lora_id"] = recv_id;
+
       // handlePost();
       counter_anem++;
       auxStatusA = false;
@@ -220,107 +231,118 @@ auto setUpSerial() -> void
 }
 
 void receive_packets(){
-   int packetSize = LoRa.parsePacket();
-    if (packetSize) {
-        // received a packet
-        Serial.print("Received packet '");
+int packetSize = LoRa.parsePacket();
+  if (packetSize) {
+    byte buffer[sizeof(float) * 5];
 
-        byte packet[packetSize];
-        for (int i = 0; i < packetSize; i++) {
-          packet[i] = LoRa.read();
-        }
+    for (int i = 0; i < packetSize; i++) {
+      buffer[i] = LoRa.read();
+    }
 
-        // Processamento do pacote recebido
-        float temperature = packet[0];
-        float humidity = packet[1];
-        float rain = packet[2];
-        float windSpeed = packet[3];
-        
-        // read packet
-        recv_temp = "";
-        recv_temp = temperature;
-        auxtempStatus = recv_temp;
-        auxStatusT = true;
-        handleRequest_temp();
-      
-        recv_umid = "";
-        recv_umid = humidity;
-        auxumidStatus = recv_umid;
-        auxStatusU = true;
-        handleRequest_umid();
+    float temperature, humidity, rain, windSpeed, id_;
 
-        recv_pluv = "";
-        recv_pluv = rain;
-        auxpluvStatus = recv_pluv;
-        auxStatusV = true;
-        handleRequest_pluv();
+    memcpy(&temperature, buffer, sizeof(float));
+    memcpy(&humidity, buffer + sizeof(float), sizeof(float));
+    memcpy(&rain, buffer + sizeof(float) * 2, sizeof(float));
+    memcpy(&windSpeed, buffer + sizeof(float) * 3, sizeof(float));
+    memcpy(&id_, buffer + sizeof(float) * 4, sizeof(float));
 
-        recv_anem = "";
-        recv_anem = windSpeed;
-        auxanemStatus = recv_anem;
-        auxStatusA = true;
-        handleRequest_anem();
-        } else {
-          auxStatusT = false;
-          auxStatusU = false;
-          auxStatusV = false;
-          auxStatusA = false;
-        }
+    // read packet
+    recv_id = id_;
 
-        // print RSSI of packet
-        Serial.print("' with RSSI ");
-        Serial.println(LoRa.packetRssi());
+    recv_temp = "";
+    recv_temp = temperature;
+    auxtempStatus = recv_temp;
+    auxStatusT = true;
+    handleRequest_temp();
+  
+    recv_umid = "";
+    recv_umid = humidity;
+    auxumidStatus = recv_umid;
+    auxStatusU = true;
+    handleRequest_umid();
+
+    recv_pluv = "";
+    recv_pluv = rain;
+    auxpluvStatus = recv_pluv;
+    auxStatusV = true;
+    handleRequest_pluv();
+
+    recv_anem = "";
+    recv_anem = windSpeed;
+    auxanemStatus = recv_anem;
+    auxStatusA = true;
+    handleRequest_anem();
+    } else {
+      auxStatusT = false;
+      auxStatusU = false;
+      auxStatusV = false;
+      auxStatusA = false;
+    }
+
 }
 
 void setup(){
-    initBoard();
+    initBoard();  // Inicialização das configurações da placa
     // When the power is turned on, a delay is required.
     delay(1500);
 
     Serial.println("LoRa Receiver");
 
-    LoRa.setPins(RADIO_CS_PIN, RADIO_RST_PIN, RADIO_DIO0_PIN);
+    LoRa.setPins(RADIO_CS_PIN, RADIO_RST_PIN, RADIO_DIO0_PIN);  //Estabelece conexão Lora
     if (!LoRa.begin(LoRa_frequency)) {
         Serial.println("Starting LoRa failed!");
         while (1);
     }
 
+  // Criação de dicionarios para cada sensor
   json_temp.createNestedArray("temp_dict");
   json_umi.createNestedArray("umi_dict");
   json_pluv.createNestedArray("pluv_dict");
   json_anem.createNestedArray("anem_dict");
 
+  // Configurações de BaudRate, Conexão WiFi e Conexão com o servidor
   setUpSerial();
   setUpWiFi();
   setUpWebServer();
   
   // Fazer post do ip do lora para o django se conectar
-
   // Pega ip do lora
   auto const clientIPAddress = WiFi.localIP();
   
   // Criar uma string com o tamanho necessário
-  String postData = clientIPAddress.toString() + ":" + String(webServerPort);
+  String postData = clientIPAddress.toString();
+  // String postData = clientIPAddress.toString() + ":" + String(webServerPort);
   
   // Instancia de httpclient
   HTTPClient http;
 
   // Begin com o servidor do django 
-  http.begin("http://192.168.0.112:8000/routersloraip/");
+  http.begin("http://192.168.0.108:8000/loraip/");
   http.addHeader("Content-Type", "application/json");
 
   // Constroi a string a ser enviada  
   DynamicJsonDocument jsonPayload(50);
   jsonPayload["url"] = postData;
 
+  // Obter o tamanho necessário para o buffer
+  // size_t bufferSize = measureJson(jsonPayload);
+
+  // Criar o buffer com o tamanho correto
+  // char buffer[bufferSize];
+
+  // Serializar o JSON para o buffer
+  // serializeJson(jsonPayload, buffer, bufferSize);
+
   char buffer[50];
   serializeJson(jsonPayload, buffer);
   
   printf("Valor como string: %s\n", buffer);
 
-  int httpResponseCode = http.POST(buffer);
+  // POST do URL onde os dados estão para o sistema
+  int httpResponseCode = http.POST(buffer); 
 
-  if (httpResponseCode == HTTP_CODE_OK) {
+  if (httpResponseCode > 0) {
   String response = http.getString();
   Serial.println(httpResponseCode);
   Serial.println(response);
@@ -328,8 +350,6 @@ void setup(){
   Serial.print("Erro na requisição: ");
   Serial.println(httpResponseCode);
 }
-
-
   http.end();
 }
 
@@ -348,7 +368,7 @@ void loop()
             // snprintf(buf, sizeof(buf), "RSSI:%i", LoRa.packetRssi());
             // u8g2->drawStr(0, 40, buf);
             if (-120 <= LoRa.packetRssi() && LoRa.packetRssi() < -80) {
-              snprintf(buf, sizeof(buf), "Sinal Fraco (%i)", LoRa.packetRssi());
+              snprintf(buf, sizeof(buf), "Sinal Fraco (%i), lora:%f", LoRa.packetRssi(), recv_id);
               u8g2->drawStr(0, 12, buf);
             }
             else if (-80 <= LoRa.packetRssi() && LoRa.packetRssi() < -40) {
@@ -360,8 +380,6 @@ void loop()
               u8g2->drawStr(0, 12, buf);
             }
 
-            // u8g2->clearDisplay();
-            // u8g2->clearBuffer();
             // Temperature display
             snprintf(buf, sizeof(buf), "T: %s", recv_temp.c_str());
             u8g2->drawStr(0, 40, buf);
