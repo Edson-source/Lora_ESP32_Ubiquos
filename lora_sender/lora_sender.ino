@@ -13,21 +13,17 @@
 #define DIAMETRO 125       // diametro interno do balde
 #define RAIO 6.25           // raio interno do balde
 #define VOLUME 3.05         // volume da bascula (em cm3) (1cm3 == 1ml) (1ml == 1000mm3)
-  
-// Defina o índice para cada valor de sensor
-#define TEMPERATURE_INDEX 0
-#define HUMIDITY_INDEX 1
-#define RAIN_INDEX 2
-#define WIND_SPEED_INDEX 3
 
 #define DHTTYPE DHT11 // DHT 11
 DHT dht(DHTPIN, DHTTYPE);
 
 unsigned long lastSend;
 
+float id = 0;
+
 // Variáveis DHT
-float temperatura_lida = 0.0;
-float umidade_lida = 0.0;
+float temperatura_lida = 0;
+float umidade_lida = 0;
 
 // Variáveis pluviometro:
 int val = 0;
@@ -49,6 +45,16 @@ float speedwind = 0;             //Velocidade do vento (km/h)
 float windspeed = 0;             //Velocidade do vento (m/s)
 
 float volume_coletado;
+
+// ------Variaveis dados recebidos--------
+float recv_temp = 0;
+float recv_umid = 0;
+float recv_anem = 0;
+float recv_pluv = 0;
+float recv_id = 0;
+
+float recv_temp_ant = 0;
+
 // This is the function that the interrupt calls to increment the rotation count
 void IRAM_ATTR isr_rotation () {
   if ((millis() - ContactBounceTime) > 15 ) { // debounce the switch contact.
@@ -137,41 +143,69 @@ void get_wind(){
     Serial.println(speedwind);
 }
 
-void send_packet_temp(){
-  // send packet
-    LoRa.beginPacket();
-    LoRa.print("T ");
-    LoRa.print(temperatura_lida );
-    LoRa.endPacket();
-};
-
-void send_packet_umi(){
-  // send packet
-    LoRa.beginPacket();
-    LoRa.print("U ");
-    LoRa.print(umidade_lida );
-    LoRa.endPacket();
-};
-
-void send_packet_pluv(){
-  // send packet
-    LoRa.beginPacket();
-    LoRa.print("V ");
-    LoRa.print(volume_coletado );
-    LoRa.endPacket();
-};
-
 void send_packets(){
-  byte packet[4];
+  // Crie um array de bytes para armazenar os dados
+  byte buffer[sizeof(float) * 5];
 
-  packet[0] = (byte)temperatura_lida;
-  packet[1] = (byte)umidade_lida;
-  packet[2] = (byte)volume_coletado;
-  packet[3] = (byte)windspeed;
+  memcpy(buffer, &temperatura_lida, sizeof(float));
+  memcpy(buffer + sizeof(float), &umidade_lida, sizeof(float));
+  memcpy(buffer + sizeof(float) * 2, &volume_coletado, sizeof(float));
+  memcpy(buffer + sizeof(float) * 3, &windspeed, sizeof(float));
+  memcpy(buffer + sizeof(float) * 4, &id, sizeof(float));
+
 
   LoRa.beginPacket();
-  LoRa.write(packet, sizeof(packet));
+  LoRa.write(buffer, sizeof(float) * 5);
   LoRa.endPacket();
+};
+
+void receive_packets(){
+int packetSize = LoRa.parsePacket();
+  if (packetSize) {
+    Serial.println("Packets Received");
+
+    byte buffer_recv[sizeof(float) * 5];
+
+    for (int i = 0; i < packetSize; i++) {
+      buffer_recv[i] = LoRa.read();
+    }
+
+    float temperature, humidity, rain, windSpeed, id_;
+
+    memcpy(&temperature, buffer_recv, sizeof(float));
+    memcpy(&humidity, buffer_recv + sizeof(float), sizeof(float));
+    memcpy(&rain, buffer_recv + sizeof(float) * 2, sizeof(float));
+    memcpy(&windSpeed, buffer_recv + sizeof(float) * 3, sizeof(float));
+    memcpy(&id_, buffer_recv + sizeof(float) * 4, sizeof(float));
+    
+    // read packet
+    recv_temp = temperature;
+    recv_umid = humidity;
+    recv_pluv = rain;
+    recv_anem = windSpeed;
+    recv_id = id_;
+  }
+}
+
+void send_packets_received(){
+  // Crie um array de bytes para armazenar os dados
+  byte buffer[sizeof(float) * 5];
+
+  if(recv_id < id && (recv_temp != 0.00 || recv_temp != recv_temp_ant)) {
+    memcpy(buffer, &recv_temp, sizeof(float));
+    memcpy(buffer + sizeof(float), &recv_umid, sizeof(float));
+    memcpy(buffer + sizeof(float) * 2, &recv_pluv, sizeof(float));
+    memcpy(buffer + sizeof(float) * 3, &recv_anem, sizeof(float));
+    memcpy(buffer + sizeof(float) * 4, &recv_id, sizeof(float));
+
+    LoRa.beginPacket();
+    LoRa.write(buffer, sizeof(float) * 5);
+    LoRa.endPacket();
+
+    recv_temp_ant = recv_temp;
+    }
+  
+
 };
 
 void setup()
@@ -199,21 +233,17 @@ void setup()
 
 void loop()
 {
+    receive_packets();
 
-    // adicionar calculo_rain que calcula o valor do pluviometro e ai chama o get_rain pra enviar pro jaosn no outro lora
     get_temp();
     get_umi();
     get_rain();
-    get_wind();
     if (millis() - lastSend > 10000){
+      get_wind();
       Serial.println("Sending packet !!!");
-      
-      // send_packet_temp();
-      // delay(20);
-      // send_packet_umi();
-      // delay(20);
-      // send_packet_pluv();
-      // delay(20);
+
+      send_packets_received();
+      delay(100);
       send_packets();
 
       lastSend = millis();
