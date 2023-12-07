@@ -49,16 +49,15 @@ float volume_coletado;
 float value = 0;
 float metros = 0;
 
-// Variaveis Anemometro
-volatile unsigned long Rotations = 0; // cup rotation counter used in interrupt routine
-volatile unsigned long ContactBounceTime = 0; // Timer to avoid contact bounce in interrupt routine
-volatile unsigned long ContactBounce = 0;
 
+// Variable definitions
+unsigned int Sample = 0;   // Sample number
+unsigned int counter = 0; // magnet counter for sensor
 unsigned long RPM = 0;            //Rotações por minuto
 float speedwind = 0;             //Velocidade do vento (km/h)
 float windspeed = 0;             //Velocidade do vento (m/s)
 
-// --- Constantes ---
+// Variaveis Anemometro
 const float pi = 3.14159265;     //Número de pi
 int period = 5000;               //Tempo de medida(miliseconds)
 int delaytime = 2000;            //Invervalo entre as amostras (miliseconds)
@@ -118,15 +117,6 @@ void nodeTimeAdjustedCallback(int32_t offset) {
 }
 
 // This is the function that the interrupt calls to increment the rotation count
-void IRAM_ATTR isr_rotation () {
-  if ((millis() - ContactBounceTime) > 15 ) { // debounce the switch contact.
-    Rotations++;
-    ContactBounceTime = millis();
-  }
-    // Serial.print("funcao rotacao");
-}
-
-// This is the function that the interrupt calls to increment the rotation count
 void IRAM_ATTR isr_rain () {
   if ((millis() - ContactBounce) > 50 ) { // debounce the switch contact.
     REEDCOUNT = REEDCOUNT + 1;              // Adiciona 1 à cntagem de pulsos
@@ -135,10 +125,26 @@ void IRAM_ATTR isr_rain () {
   }
 }
 
+void addcount(){
+  counter++;
+} 
+
+// Measure wind speed
+void windvelocity(){
+  speedwind = 0;
+  windspeed = 0;
+  
+  counter = 0;  
+  attachInterrupt(0, addcount, RISING);
+  unsigned long millis();       
+  long startTime = millis();
+  while(millis() < startTime + period) {
+  }
+}
+
 //Função para calcular o RPM
 void RPMcalc() {
-  Rotations = Rotations/37;         //37 Dentes no interior do anemômetro
-  RPM = ((Rotations) * 60) / (period / 1000); // Calculate revolutions per minute (RPM)
+  RPM = ((counter) * 60) / (period / 1000); // Calculate revolutions per minute (RPM)
 }
 
 //Velocidade do vento em m/s
@@ -166,9 +172,9 @@ void get_umi(){
 }
 
 void get_rain(){
-    float area_recipiente = 3.14159265 * (RAIO * RAIO); // área da seção transversal do recipiente em cm²
-    float volume_por_virada = (VOLUME/area_recipiente);
-    volume_coletado = (REEDCOUNT * volume_por_virada) * 10; // volume total coletado em cm³
+    // float area_recipiente = 3.14159265 * (RAIO * RAIO); // área da seção transversal do recipiente em cm²
+    // float volume_por_virada = (VOLUME/area_recipiente);
+    volume_coletado = (REEDCOUNT * 0.25) * 10; // volume total coletado em cm³
 
     Serial.print("Viradas: ");
     Serial.println(REEDCOUNT);
@@ -179,15 +185,14 @@ void get_rain(){
 }
 
 void get_wind(){
-    Rotations = 0; // Set Rotations count to 0 ready for calculations
-
-    sei(); // Enables interrupts
-    delay(period); // Wait 5 seconds to average
-    cli(); // Disable interrupts
-
-    Serial.print("Rotações: ");
-    Serial.println(Rotations);
-
+    Sample++;
+    Serial.print(Sample);
+    Serial.print(": Start measurement...");
+    windvelocity();
+    Serial.println("   finished.");
+    Serial.print("Counter: ");
+    Serial.print(counter);
+  
     RPMcalc();
     Serial.print("RPM: ");
     Serial.println(RPM);
@@ -231,7 +236,7 @@ void send_packets(){
 };
 
 void receive_packets(){
-int packetSize = LoRa.parsePacket();
+  int packetSize = LoRa.parsePacket();
   if (packetSize) {
     Serial.println("Packets Received");
 
@@ -303,11 +308,13 @@ void setup()
         // while (1);
     }
 
+    LoRa.setSpreadingFactor(8);           // ranges from 6-12,default 7 see API docs
+    
+    pinMode(WindSensor, INPUT);
+    digitalWrite(WindSensor, HIGH);     //internall pull-up active
     pinMode(REED, INPUT_PULLUP);
-    pinMode(WindSensorPin, INPUT_PULLUP);
     pinMode(NIVEL, INPUT_PULLUP);
     attachInterrupt(REED, isr_rain, FALLING);
-    attachInterrupt(WindSensorPin, isr_rotation, FALLING);
 }
 
 void loop()

@@ -1,7 +1,7 @@
 #include <LoRa.h>             // Rede Lora
 #include "boards.h"           // Especificação da versão utilizada
 #include <ArduinoJson.h>      // Envio de informações usando Json
-#include <WebServer.h>        // Estabelece conecxão com o servidor que receberá os dados
+#include <WebServer.h>        // Estabelece conexão com o servidor que receberá os dados
 #include <WiFi.h>             // WiFi
 #include <HTTPClient.h>       // Comunicação com o sistema
 #include <SPI.h>                // SSD1396
