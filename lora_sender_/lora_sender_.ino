@@ -9,7 +9,7 @@
 /* Defines do projeto */
 #define REED          2    // pin onde o sensor magnetico esta conectado
 #define DHTPIN        4    // pin onde dht esta conectado
-#define WindSensorPin 0    // The pin location of the anemometer sensor
+#define WindSensor 0    // The pin location of the anemometer sensor
 #define NIVEL         33   // pin onde o sensor de pressão está instalado
 // #define DIRECAO       35   // pin onde o sensor de pressão está instalado
 
@@ -44,6 +44,7 @@ int val = 0;
 int old_val = 0;
 volatile unsigned long REEDCOUNT = 0;
 float volume_coletado;
+volatile unsigned long ContactBounce = 0;
 
 // Variaveis Sensor Nivel
 float value = 0;
@@ -222,6 +223,11 @@ void send_packets(){
   // Crie um array de bytes para armazenar os dados
   byte buffer[sizeof(float) * 6];
 
+  temperatura_lida = 25;
+  umidade_lida = 90;
+  volume_coletado = 2.5;
+  windspeed = 10.4;
+
   memcpy(buffer, &temperatura_lida, sizeof(float));
   memcpy(buffer + sizeof(float), &umidade_lida, sizeof(float));
   memcpy(buffer + sizeof(float) * 2, &volume_coletado, sizeof(float));
@@ -308,7 +314,7 @@ void setup()
         // while (1);
     }
 
-    LoRa.setSpreadingFactor(8);           // ranges from 6-12,default 7 see API docs
+    LoRa.setSpreadingFactor(13);           // ranges from 6-12,default 7 see API docs
     
     pinMode(WindSensor, INPUT);
     digitalWrite(WindSensor, HIGH);     //internall pull-up active
@@ -321,12 +327,12 @@ void loop()
 {
     // receive_packets();
 
-    get_temp();
-    get_umi();
-    get_rain();
-    get_nivel();
+    // get_temp();
+    // get_umi();
+    // get_rain();
+    // get_nivel();
     if (millis() - lastSend > 5000){
-      get_wind();
+      // get_wind();
       Serial.println("Sending packet !!!");
 
       // send_packets_received();
