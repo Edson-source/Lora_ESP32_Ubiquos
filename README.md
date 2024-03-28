@@ -36,6 +36,10 @@ A interface de visualização permite aos usuários acessar as informações col
 >-https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json, http://arduino.esp8266.com/stable/package_esp8266com_index.json
 
 
+Pinout
+![LoRa LilyGO T-Beam pinout](https://github.com/Edson-source/Lora_ESP32_Ubiquos/assets/79418523/0fb608c3-6633-4155-a92d-de3e2ce3e7ac)
+
+
 ### 🤝 Suporte/Contato
 
 [![Whatsapp Badge](https://img.shields.io/badge/WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)](https://wa.me/554899377583)
